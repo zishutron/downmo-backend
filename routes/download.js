@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const ytdl = require('ytdl-core');
 const contentDisposition = require('content-disposition');
-const axios = require('axios');
 
 // ============================================================
 // PLATFORM DETECTION
@@ -32,24 +31,54 @@ function getYouTubeThumbnail(videoId) {
 }
 
 // ============================================================
-// GET VIDEO INFO
+// VALIDATE YOUTUBE URL
+// ============================================================
+function isValidYouTubeUrl(url) {
+    try {
+        const u = new URL(url);
+        const host = u.hostname.toLowerCase();
+        if (host.includes('youtube.com') || host.includes('youtu.be')) {
+            const videoId = u.searchParams?.get('v') || u.pathname?.split('/').pop();
+            return videoId && videoId.length === 11;
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+// ============================================================
+// GET VIDEO INFO - FIXED
 // ============================================================
 router.post('/info', async (req, res) => {
     try {
+        console.log('📡 Info request received:', req.body);
         const { url } = req.body;
-        
+
         if (!url) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'URL is required' 
+            return res.status(400).json({
+                success: false,
+                error: 'URL is required'
+            });
+        }
+
+        // Validate URL
+        if (!isValidYouTubeUrl(url)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid YouTube URL. Please check the link.'
             });
         }
 
         const platform = detectPlatform(url);
+        console.log('📍 Platform detected:', platform);
 
         if (platform === 'youtube') {
             try {
+                console.log('⏳ Fetching YouTube info...');
                 const info = await ytdl.getInfo(url);
+                console.log('✅ YouTube info fetched:', info.videoDetails.title);
+
                 const videoId = info.videoDetails.videoId;
                 const thumbnail = getYouTubeThumbnail(videoId);
 
@@ -63,15 +92,14 @@ router.post('/info', async (req, res) => {
                     author: info.videoDetails.author.name
                 });
             } catch (error) {
-                console.error('YouTube info error:', error);
+                console.error('❌ YouTube fetch error:', error.message);
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid YouTube URL or video unavailable'
+                    error: 'Video not found or unavailable. Please check the URL.'
                 });
             }
         }
 
-        // For other platforms
         return res.json({
             success: true,
             platform: platform,
@@ -81,55 +109,61 @@ router.post('/info', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Info error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
+        console.error('❌ Info error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to get video info'
         });
     }
 });
 
 // ============================================================
-// DOWNLOAD VIDEO
+// DOWNLOAD VIDEO - FIXED
 // ============================================================
 router.post('/download', async (req, res) => {
     try {
+        console.log('📡 Download request received:', req.body);
         const { url, quality = 'best' } = req.body;
-        
+
         if (!url) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'URL is required' 
+            return res.status(400).json({
+                success: false,
+                error: 'URL is required'
+            });
+        }
+
+        // Validate URL
+        if (!isValidYouTubeUrl(url)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid YouTube URL'
             });
         }
 
         const platform = detectPlatform(url);
+        console.log('📍 Platform detected:', platform);
 
         if (platform === 'youtube') {
             try {
+                console.log('⏳ Fetching video info...');
                 const info = await ytdl.getInfo(url);
                 const title = info.videoDetails.title.replace(/[^\w\s-]/gi, '');
 
-                // Select format
-                let format;
-                if (quality === 'best') {
+                // Choose format
+                let format = ytdl.chooseFormat(info.formats, {
+                    quality: quality === 'best' ? 'highest' : 'lowest',
+                    filter: 'audioandvideo'
+                });
+
+                if (!format) {
+                    // Try video only
                     format = ytdl.chooseFormat(info.formats, {
-                        quality: ['137', '136', '135', '134', '133', '22', '18'],
-                        filter: 'audioandvideo'
-                    });
-                    if (!format) {
-                        format = ytdl.chooseFormat(info.formats, {
-                            quality: 'highestvideo'
-                        });
-                    }
-                } else {
-                    format = ytdl.chooseFormat(info.formats, {
-                        quality: 'lowest',
-                        filter: 'audioandvideo'
+                        quality: quality === 'best' ? 'highestvideo' : 'lowestvideo'
                     });
                 }
 
                 if (!format) {
+                    // Try any format with video
                     format = ytdl.chooseFormat(info.formats, {
                         quality: 'highest',
                         filter: 'videoandaudio'
@@ -141,12 +175,15 @@ router.post('/download', async (req, res) => {
                 }
 
                 const filename = `${title}.mp4`;
-                
-                // Set response headers
+                console.log('✅ Streaming:', filename);
+
+                // Set headers
                 res.setHeader('Content-Type', 'video/mp4');
                 res.setHeader('Content-Disposition', contentDisposition(filename));
                 res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
-                res.setHeader('Content-Length', format.contentLength || 0);
+                if (format.contentLength) {
+                    res.setHeader('Content-Length', format.contentLength);
+                }
 
                 // Stream video
                 const stream = ytdl(url, {
@@ -156,11 +193,11 @@ router.post('/download', async (req, res) => {
                 });
 
                 stream.on('error', (err) => {
-                    console.error('Stream error:', err);
+                    console.error('❌ Stream error:', err);
                     if (!res.headersSent) {
-                        res.status(500).json({ 
-                            success: false, 
-                            error: err.message 
+                        res.status(500).json({
+                            success: false,
+                            error: err.message
                         });
                     }
                 });
@@ -168,47 +205,25 @@ router.post('/download', async (req, res) => {
                 stream.pipe(res);
 
             } catch (error) {
-                console.error('YouTube download error:', error);
+                console.error('❌ YouTube download error:', error.message);
                 res.status(500).json({
                     success: false,
-                    error: error.message || 'Failed to download YouTube video'
+                    error: error.message || 'Failed to download video'
                 });
             }
         } else {
-            // For other platforms
-            try {
-                const response = await axios({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'stream',
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'video/*'
-                    },
-                    timeout: 30000
-                });
-
-                const filename = `video_${Date.now()}.mp4`;
-                res.setHeader('Content-Type', response.headers['content-type'] || 'video/mp4');
-                res.setHeader('Content-Disposition', contentDisposition(filename));
-                res.setHeader('Content-Length', response.headers['content-length'] || 0);
-
-                response.data.pipe(res);
-
-            } catch (error) {
-                res.status(400).json({
-                    success: false,
-                    error: 'Direct download not supported for this platform'
-                });
-            }
+            res.status(400).json({
+                success: false,
+                error: 'Only YouTube is currently supported'
+            });
         }
 
     } catch (error) {
-        console.error('Download error:', error);
+        console.error('❌ Download error:', error);
         if (!res.headersSent) {
-            res.status(500).json({ 
-                success: false, 
-                error: error.message 
+            res.status(500).json({
+                success: false,
+                error: error.message || 'Download failed'
             });
         }
     }
@@ -221,14 +236,14 @@ router.get('/platforms', (req, res) => {
     res.json({
         success: true,
         platforms: [
-            { name: 'YouTube', icon: 'youtube', supported: true },
-            { name: 'TikTok', icon: 'tiktok', supported: true },
-            { name: 'Instagram', icon: 'instagram', supported: true },
-            { name: 'Facebook', icon: 'facebook', supported: true },
-            { name: 'Twitter/X', icon: 'twitter', supported: true },
-            { name: 'Reddit', icon: 'reddit', supported: true },
-            { name: 'Vimeo', icon: 'vimeo', supported: true },
-            { name: 'Dailymotion', icon: 'dailymotion', supported: true }
+            { name: 'YouTube', supported: true },
+            { name: 'TikTok', supported: false },
+            { name: 'Instagram', supported: false },
+            { name: 'Facebook', supported: false },
+            { name: 'Twitter/X', supported: false },
+            { name: 'Reddit', supported: false },
+            { name: 'Vimeo', supported: false },
+            { name: 'Dailymotion', supported: false }
         ]
     });
 });
