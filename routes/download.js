@@ -28,12 +28,6 @@ function detectPlatform(url) {
 // GET YOUTUBE THUMBNAIL
 // ============================================================
 function getYouTubeThumbnail(videoId) {
-    const qualities = ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault', 'default'];
-    for (const quality of qualities) {
-        const url = `https://img.youtube.com/vi/${videoId}/${quality}.jpg`;
-        // Return the highest quality available
-        if (quality === 'maxresdefault') return url;
-    }
     return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 }
 
@@ -43,8 +37,12 @@ function getYouTubeThumbnail(videoId) {
 router.post('/info', async (req, res) => {
     try {
         const { url } = req.body;
+        
         if (!url) {
-            return res.status(400).json({ success: false, error: 'URL is required' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'URL is required' 
+            });
         }
 
         const platform = detectPlatform(url);
@@ -62,15 +60,7 @@ router.post('/info', async (req, res) => {
                     duration: parseInt(info.videoDetails.lengthSeconds),
                     thumbnail: thumbnail,
                     videoId: videoId,
-                    author: info.videoDetails.author.name,
-                    formats: info.formats.map(f => ({
-                        itag: f.itag,
-                        quality: f.qualityLabel || f.quality,
-                        hasVideo: f.hasVideo,
-                        hasAudio: f.hasAudio,
-                        bitrate: f.bitrate,
-                        container: f.container
-                    }))
+                    author: info.videoDetails.author.name
                 });
             } catch (error) {
                 console.error('YouTube info error:', error);
@@ -92,18 +82,25 @@ router.post('/info', async (req, res) => {
 
     } catch (error) {
         console.error('Info error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
     }
 });
 
 // ============================================================
-// DOWNLOAD VIDEO (STREAMING)
+// DOWNLOAD VIDEO
 // ============================================================
 router.post('/download', async (req, res) => {
     try {
         const { url, quality = 'best' } = req.body;
+        
         if (!url) {
-            return res.status(400).json({ success: false, error: 'URL is required' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'URL is required' 
+            });
         }
 
         const platform = detectPlatform(url);
@@ -113,16 +110,13 @@ router.post('/download', async (req, res) => {
                 const info = await ytdl.getInfo(url);
                 const title = info.videoDetails.title.replace(/[^\w\s-]/gi, '');
 
-                // Select format based on quality
+                // Select format
                 let format;
                 if (quality === 'best') {
-                    // Try to get 1080p or highest with audio
                     format = ytdl.chooseFormat(info.formats, {
                         quality: ['137', '136', '135', '134', '133', '22', '18'],
                         filter: 'audioandvideo'
                     });
-                    
-                    // If no combined format, get video + audio separately
                     if (!format) {
                         format = ytdl.chooseFormat(info.formats, {
                             quality: 'highestvideo'
@@ -136,7 +130,6 @@ router.post('/download', async (req, res) => {
                 }
 
                 if (!format) {
-                    // Fallback to any format with video
                     format = ytdl.chooseFormat(info.formats, {
                         quality: 'highest',
                         filter: 'videoandaudio'
@@ -148,6 +141,8 @@ router.post('/download', async (req, res) => {
                 }
 
                 const filename = `${title}.mp4`;
+                
+                // Set response headers
                 res.setHeader('Content-Type', 'video/mp4');
                 res.setHeader('Content-Disposition', contentDisposition(filename));
                 res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
@@ -163,7 +158,10 @@ router.post('/download', async (req, res) => {
                 stream.on('error', (err) => {
                     console.error('Stream error:', err);
                     if (!res.headersSent) {
-                        res.status(500).json({ success: false, error: err.message });
+                        res.status(500).json({ 
+                            success: false, 
+                            error: err.message 
+                        });
                     }
                 });
 
@@ -177,7 +175,7 @@ router.post('/download', async (req, res) => {
                 });
             }
         } else {
-            // For other platforms - proxy download
+            // For other platforms
             try {
                 const response = await axios({
                     method: 'GET',
@@ -208,7 +206,10 @@ router.post('/download', async (req, res) => {
     } catch (error) {
         console.error('Download error:', error);
         if (!res.headersSent) {
-            res.status(500).json({ success: false, error: error.message });
+            res.status(500).json({ 
+                success: false, 
+                error: error.message 
+            });
         }
     }
 });
