@@ -1,6 +1,6 @@
 {
   "name": "downmo-backend",
-  "version": "3.1.0",
+  "version": "3.0.0",
   "description": "Downmo Video Downloader API",
   "main": "server.js",
   "scripts": {
@@ -12,7 +12,6 @@
     "cors": "^2.8.5",
     "axios": "^1.6.0",
     "ytdl-core": "^4.11.5",
-    "fluent-ffmpeg": "^2.1.2",
     "fs-extra": "^11.1.1",
     "dotenv": "^16.3.1",
     "content-disposition": "^0.5.4"
