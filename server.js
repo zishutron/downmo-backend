@@ -12,28 +12,30 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// CORS CONFIGURATION - FIXED
+// CORS - FIXED (Allow all for now)
 // ============================================================
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
-    : ['*'];
-
 app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf('*') !== -1) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
-        return callback(new Error('Not allowed by CORS'));
-    },
+    origin: '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With']
 }));
+
+// Handle preflight requests
+app.options('*', cors());
 
 // Body parsers
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ============================================================
+// LOGGING MIDDLEWARE
+// ============================================================
+app.use((req, res, next) => {
+    console.log(`📡 ${req.method} ${req.url}`);
+    console.log('📦 Body:', req.body);
+    next();
+});
 
 // ============================================================
 // TEMP DIRECTORY
@@ -46,17 +48,23 @@ fs.ensureDirSync(tempDir);
 // ============================================================
 app.use('/api/download', downloadRoutes);
 
-// Health check
+// ============================================================
+// HEALTH CHECK - IMPROVED
+// ============================================================
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        memory: process.memoryUsage()
+        memory: process.memoryUsage(),
+        node: process.version,
+        env: process.env.NODE_ENV || 'development'
     });
 });
 
-// Root route
+// ============================================================
+// ROOT ROUTE
+// ============================================================
 app.get('/', (req, res) => {
     res.json({
         name: 'Downmo API',
@@ -75,7 +83,7 @@ app.get('/', (req, res) => {
 // ERROR HANDLING
 // ============================================================
 app.use((err, req, res, next) => {
-    console.error('Server Error:', err.message);
+    console.error('❌ Server Error:', err.message);
     console.error(err.stack);
     res.status(err.status || 500).json({
         success: false,
@@ -83,8 +91,11 @@ app.use((err, req, res, next) => {
     });
 });
 
-// 404 handler
+// ============================================================
+// 404 HANDLER
+// ============================================================
 app.use((req, res) => {
+    console.log(`❌ 404: ${req.method} ${req.url}`);
     res.status(404).json({
         success: false,
         error: 'Endpoint not found'
@@ -94,8 +105,8 @@ app.use((req, res) => {
 // ============================================================
 // START SERVER
 // ============================================================
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Downmo Backend running on port ${PORT}`);
-    console.log(`📍 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`📍 Allowed origins: ${allowedOrigins.join(', ')}`);
+    console.log(`📍 Health: https://downmo-backend.onrender.com/api/health`);
+    console.log(`📍 CORS: Enabled for all origins`);
 });
