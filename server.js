@@ -5,14 +5,13 @@ const path = require('path');
 const fs = require('fs-extra');
 const downloadRoutes = require('./routes/download');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// CORS - FIXED (Allow all for now)
+// CORS - Allow all
 // ============================================================
 app.use(cors({
     origin: '*',
@@ -21,7 +20,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With']
 }));
 
-// Handle preflight requests
 app.options('*', cors());
 
 // Body parsers
@@ -29,42 +27,32 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ============================================================
-// LOGGING MIDDLEWARE
+// Logging
 // ============================================================
 app.use((req, res, next) => {
     console.log(`📡 ${req.method} ${req.url}`);
-    console.log('📦 Body:', req.body);
+    if (req.method === 'POST') {
+        console.log('📦 Body:', req.body);
+    }
     next();
 });
 
 // ============================================================
-// TEMP DIRECTORY
-// ============================================================
-const tempDir = path.join(__dirname, 'temp');
-fs.ensureDirSync(tempDir);
-
-// ============================================================
-// ROUTES
+// Routes
 // ============================================================
 app.use('/api/download', downloadRoutes);
 
-// ============================================================
-// HEALTH CHECK - IMPROVED
-// ============================================================
+// Health check
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        node: process.version,
-        env: process.env.NODE_ENV || 'development'
+        node: process.version
     });
 });
 
-// ============================================================
-// ROOT ROUTE
-// ============================================================
+// Root
 app.get('/', (req, res) => {
     res.json({
         name: 'Downmo API',
@@ -73,29 +61,23 @@ app.get('/', (req, res) => {
         endpoints: {
             health: '/api/health',
             info: '/api/download/info (POST)',
-            download: '/api/download/download (POST)',
-            platforms: '/api/download/platforms (GET)'
+            download: '/api/download/download (POST)'
         }
     });
 });
 
 // ============================================================
-// ERROR HANDLING
+// Error Handling
 // ============================================================
 app.use((err, req, res, next) => {
-    console.error('❌ Server Error:', err.message);
-    console.error(err.stack);
+    console.error('❌ Error:', err.message);
     res.status(err.status || 500).json({
         success: false,
         error: err.message || 'Internal server error'
     });
 });
 
-// ============================================================
-// 404 HANDLER
-// ============================================================
 app.use((req, res) => {
-    console.log(`❌ 404: ${req.method} ${req.url}`);
     res.status(404).json({
         success: false,
         error: 'Endpoint not found'
@@ -103,10 +85,9 @@ app.use((req, res) => {
 });
 
 // ============================================================
-// START SERVER
+// Start
 // ============================================================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Downmo Backend running on port ${PORT}`);
     console.log(`📍 Health: https://downmo-backend.onrender.com/api/health`);
-    console.log(`📍 CORS: Enabled for all origins`);
 });
